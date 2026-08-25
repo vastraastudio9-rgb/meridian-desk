@@ -1,0 +1,13 @@
+[build]
+  command = "npx vite build --config vite.static.config.ts"
+  publish = "dist-static"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NODE_ENV = "development"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

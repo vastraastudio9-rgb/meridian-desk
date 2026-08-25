@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -17,6 +17,7 @@ function emitIndexHtml() {
       if (existsSync(from)) copyFileSync(from, to);
       const fav = resolve(root, "public/favicon.svg");
       if (existsSync(fav)) copyFileSync(fav, resolve(out, "favicon.svg"));
+      writeFileSync(resolve(out, "_redirects"), "/*    /index.html   200\n");
     },
   };
 }
