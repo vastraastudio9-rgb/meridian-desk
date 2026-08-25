@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "node scripts/with-app-env.mjs vite build",
-  "installCommand": "npm install"
+  "buildCommand": "npx vite build --config vite.static.config.ts",
+  "outputDirectory": "dist-static",
+  "installCommand": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install",
+  "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }]
 }

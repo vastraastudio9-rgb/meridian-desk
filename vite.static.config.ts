@@ -1,3 +1,4 @@
+import { copyFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,10 +7,24 @@ import { defineConfig } from "vite";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
+function emitIndexHtml() {
+  return {
+    name: "emit-index-html",
+    closeBundle() {
+      const out = resolve(root, "dist-static");
+      const from = resolve(out, "static.html");
+      const to = resolve(out, "index.html");
+      if (existsSync(from)) copyFileSync(from, to);
+      const fav = resolve(root, "public/favicon.svg");
+      if (existsSync(fav)) copyFileSync(fav, resolve(out, "favicon.svg"));
+    },
+  };
+}
+
 export default defineConfig({
   base: "./",
   publicDir: false,
-  plugins: [tailwindcss(), viteReact()],
+  plugins: [tailwindcss(), viteReact(), emitIndexHtml()],
   resolve: {
     alias: [
       {
