@@ -1,4 +1,4 @@
-import { evaluateSignal } from "./engine";
+import { applyTapeContext, evaluateSignal } from "./engine";
 import { htfAlign, sidesAligned, alignBoost } from "./align";
 import type { Candle, MarketRow, MarketSnapshot } from "./types";
 import { HIGHER_TF, type Interval } from "./universe";
@@ -47,7 +47,7 @@ export function applyLiveQuotes(
     const quote = bySymbol.get(row.symbol);
     if (!quote) return row;
     const candles = stampLastCandle(row.candles, quote.price);
-    const signal = evaluateSignal(candles);
+    const signal = evaluateSignal(candles, { higherSide: row.higherSide });
     const atrPct =
       signal.atr != null && quote.price > 0 ? signal.atr / quote.price : null;
     const alignState = htfAlign(signal.side, higher, row.higherSide);
@@ -69,9 +69,18 @@ export function applyLiveQuotes(
     };
   });
 
+  applyTapeContext(markets);
+  for (const row of markets) {
+    row.alignState = htfAlign(row.signal.side, higher, row.higherSide);
+    row.aligned = sidesAligned(row.signal.side, higher, row.higherSide);
+  }
+
   markets.sort((a, b) => {
     const rank = (s: MarketRow) =>
-      alignBoost(s.alignState) + (s.signal.side === "wait" ? 0 : 1000) + s.signal.confidence;
+      alignBoost(s.alignState) +
+      (s.signal.side === "wait" ? 0 : 1000) +
+      (s.signal.quality === "A" ? 90 : s.signal.quality === "B" ? 40 : 0) +
+      s.signal.confidence;
     return rank(b) - rank(a);
   });
 

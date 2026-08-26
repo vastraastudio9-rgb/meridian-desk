@@ -1,4 +1,4 @@
-import { evaluateSignal, backtestHits, mergeHitStats } from "./engine";
+import { evaluateSignal, backtestHits, mergeHitStats, blankSignal, applyTapeContext } from "./engine";
 import { stampLastCandle, type LiveQuote } from "./live";
 import { startPriceStream, streamQuoteMap, streamQuotes, streamReady } from "./stream";
 import type { Candle, MarketRow, MarketSnapshot, Side } from "./types";
@@ -319,28 +319,15 @@ export async function loadMarket(
       if (!Number.isFinite(price) || price <= 0) continue;
       const candles = bySymbol.get(pair.symbol) ?? [];
       const liveCandles = candles.length >= 26 ? stampLastCandle(candles, price) : candles;
-      const signal =
-        liveCandles.length >= 26
-          ? evaluateSignal(liveCandles)
-          : {
-              side: "wait" as const,
-              confidence: 12,
-              score: 0,
-              reasons: ["Waiting on candles"],
-              entry: price,
-              stop: price,
-              target: price,
-              rsi: null,
-              macdHist: null,
-              emaBias: "flat" as const,
-              volumeRatio: null,
-              atr: null,
-            };
       let higherSide: Side | null = null;
       if (higher && liveCandles.length >= 26) {
         const ht = klineCache.get(`${pair.symbol}:${higher}:80`)?.candles;
         if (ht && ht.length >= 26) higherSide = evaluateSignal(ht).side;
       }
+      const signal =
+        liveCandles.length >= 26
+          ? evaluateSignal(liveCandles, { higherSide })
+          : blankSignal(price);
       const alignState = htfAlign(signal.side, higher, higherSide);
       const aligned = sidesAligned(signal.side, higher, higherSide);
       const atrPct = signal.atr != null && price > 0 ? signal.atr / price : null;
@@ -374,9 +361,18 @@ export async function loadMarket(
       });
     }
 
+    applyTapeContext(markets);
+    for (const row of markets) {
+      row.alignState = htfAlign(row.signal.side, higher, row.higherSide);
+      row.aligned = sidesAligned(row.signal.side, higher, row.higherSide);
+    }
+
     markets.sort((a, b) => {
       const rank = (s: MarketRow) =>
-        alignBoost(s.alignState) + (s.signal.side === "wait" ? 0 : 1000) + s.signal.confidence;
+        alignBoost(s.alignState) +
+        (s.signal.side === "wait" ? 0 : 1000) +
+        (s.signal.quality === "A" ? 90 : s.signal.quality === "B" ? 40 : 0) +
+        s.signal.confidence;
       return rank(b) - rank(a);
     });
 
@@ -436,20 +432,7 @@ export async function loadMarket(
         volume: q?.volume ?? old!.volume,
         quoteVolume: q?.quoteVolume ?? old!.quoteVolume,
         candles: old?.candles ?? [],
-        signal: old?.signal ?? {
-          side: "wait",
-          confidence: 0,
-          score: 0,
-          reasons: ["Waiting on candles"],
-          entry: q?.price ?? old!.price,
-          stop: q?.price ?? old!.price,
-          target: q?.price ?? old!.price,
-          rsi: null,
-          macdHist: null,
-          emaBias: "flat",
-          volumeRatio: null,
-          atr: null,
-        },
+        signal: old?.signal ?? blankSignal(q?.price ?? old!.price),
         stats: old?.stats ?? { closed: 0, wins: 0, losses: 0, open: 0, winRate: null, expectancyR: null },
         higherInterval: HIGHER_TF[interval],
         higherSide: old?.higherSide ?? null,

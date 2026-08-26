@@ -156,6 +156,9 @@ export function CoinDetail({
 
         <div className="mt-4 flex items-center gap-2">
           <Badge variant={signal.side}>{SIDE_LABEL[signal.side]}</Badge>
+          {signal.quality !== "—" && (
+            <Badge variant="outline">{signal.quality} setup</Badge>
+          )}
           <span className="text-xs text-muted-foreground">
             Confidence {signal.confidence}
           </span>
@@ -224,21 +227,19 @@ export function CoinDetail({
             }
           />
           <Stat
-            label="EMA bias"
-            value={
-              signal.emaBias === "bull"
-                ? "Bullish"
-                : signal.emaBias === "bear"
-                  ? "Bearish"
-                  : "Flat"
-            }
+            label="ADX"
+            value={signal.adx == null ? "—" : signal.adx.toFixed(0)}
             tone={
-              signal.emaBias === "bull"
+              signal.adx != null && signal.adx >= 25
                 ? "long"
-                : signal.emaBias === "bear"
-                  ? "short"
+                : signal.adx != null && signal.adx < 16
+                  ? "muted"
                   : "muted"
             }
+          />
+          <Stat
+            label="Setup"
+            value={signal.setup === "none" ? "Scan" : signal.setup}
           />
           <Stat
             label="Volume"

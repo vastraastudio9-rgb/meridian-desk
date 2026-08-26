@@ -63,6 +63,11 @@ export function SignalCard({
                 Call
               </span>
             )}
+            {signal.quality !== "—" && (
+              <span className="text-xs uppercase tracking-label text-muted-foreground">
+                {signal.quality}
+              </span>
+            )}
             {row.alignState === "aligned" && (
               <span className="text-xs uppercase tracking-label text-muted-foreground">
                 Align
@@ -116,12 +121,13 @@ export function SignalCard({
         {signal.reasons.join(" · ")}
       </p>
       <p className="relative mt-2 font-mono text-[11px] tabular-nums text-subtle">
+        {signal.setup !== "none" ? signal.setup : "scan"}
+        <span className="mx-1.5 text-border-strong">·</span>
         RSI {signal.rsi ?? "—"}
         <span className="mx-1.5 text-border-strong">·</span>
         EMA {signal.emaBias}
         <span className="mx-1.5 text-border-strong">·</span>
-        MACD{" "}
-        {signal.macdHist == null ? "—" : signal.macdHist > 0 ? "up" : "down"}
+        ADX {signal.adx ?? "—"}
       </p>
       {skip && !skip.ok && (
         <p className="relative mt-2 text-[11px] leading-snug text-muted-foreground">

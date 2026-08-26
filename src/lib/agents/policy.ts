@@ -114,8 +114,8 @@ export function formatCallMessage(
     ? `${interval} + ${row.higherInterval}`
     : interval;
   return [
-    `MERIDIAN ${signal.side.toUpperCase()} · ${row.base}`,
-    `${mode.toUpperCase()} · ${tf} · conf ${signal.confidence}${row.alignState === "aligned" ? " · aligned" : row.alignState === "pending" ? " · htf wait" : ""}`,
+    `MERIDIAN ${signal.side.toUpperCase()} · ${row.base}${signal.quality !== "—" ? ` · ${signal.quality}` : ""}`,
+    `${mode.toUpperCase()} · ${tf} · conf ${signal.confidence}${row.alignState === "aligned" ? " · aligned" : row.alignState === "pending" ? " · htf wait" : ""}${signal.setup !== "none" ? ` · ${signal.setup}` : ""}`,
     `Entry ${signal.entry}  Stop ${signal.stop}  Target ${signal.target}`,
     `Size ${qty} ${row.base} · risk $${riskUsd}`,
     signal.reasons.slice(0, 2).join(" · "),

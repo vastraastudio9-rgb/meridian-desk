@@ -11,6 +11,9 @@ export type Candle = {
   v: number;
 };
 
+export type SignalQuality = "A" | "B" | "C" | "—";
+export type SignalSetup = "pullback" | "breakout" | "diverge" | "trend" | "none";
+
 export type Signal = {
   side: Side;
   confidence: number;
@@ -24,6 +27,9 @@ export type Signal = {
   emaBias: "bull" | "bear" | "flat";
   volumeRatio: number | null;
   atr: number | null;
+  quality: SignalQuality;
+  setup: SignalSetup;
+  adx: number | null;
 };
 
 export type HitStats = {
@@ -89,7 +95,7 @@ export type PaperFill = {
   target: number;
   qty: number;
   riskUsd: number;
-  rewardR?: number;
+  rewardR: number;
   openedAt: number;
   closedAt: number | null;
   result: "open" | "win" | "loss";
