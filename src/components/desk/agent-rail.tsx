@@ -42,6 +42,7 @@ export function AgentRail({
   telegramChatId,
   onTelegramToken,
   onTelegramChatId,
+  telegramLinked = false,
   mode,
   onMode,
   binanceKey,
@@ -76,6 +77,7 @@ export function AgentRail({
   telegramChatId: string;
   onTelegramToken: (v: string) => void;
   onTelegramChatId: (v: string) => void;
+  telegramLinked?: boolean;
   mode: DeskMode;
   onMode: (mode: DeskMode) => void;
   binanceKey: string;
@@ -116,6 +118,7 @@ export function AgentRail({
           chatId={telegramChatId}
           onToken={onTelegramToken}
           onChatId={onTelegramChatId}
+          hostLinked={telegramLinked}
         />
       </div>
 

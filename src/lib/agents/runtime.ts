@@ -21,6 +21,7 @@ import type { Interval } from "@/lib/market/universe";
 import { clampRisk, DEFAULT_RISK, type RiskParams } from "@/lib/risk/params";
 
 const STATE_PATH = join(process.cwd(), "data", "desk-runtime.json");
+const TG_PATH = join(process.cwd(), "data", "telegram.json");
 const TICK_MS = 15_000;
 const BRIEF_EVERY_MS = 90_000;
 const MAX_EVENTS = 40;
@@ -125,6 +126,47 @@ async function persist(state: RuntimeState) {
   }
 }
 
+function envTelegram() {
+  return {
+    token: String(process.env.TELEGRAM_BOT_TOKEN ?? process.env.TG_BOT_TOKEN ?? "").trim(),
+    chatId: String(process.env.TELEGRAM_CHAT_ID ?? process.env.TG_CHAT_ID ?? "").trim(),
+  };
+}
+
+async function overlayTelegram() {
+  try {
+    const raw = JSON.parse(await readFile(TG_PATH, "utf8")) as {
+      token?: unknown;
+      chatId?: unknown;
+    };
+    return {
+      token: String(raw.token ?? "").trim(),
+      chatId: String(raw.chatId ?? "").trim(),
+    };
+  } catch {
+    return { token: "", chatId: "" };
+  }
+}
+
+async function writeTelegramOverlay(token: string, chatId: string) {
+  try {
+    await mkdir(join(process.cwd(), "data"), { recursive: true });
+    await writeFile(TG_PATH, JSON.stringify({ token, chatId }), "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
+async function resolveTelegram(state: RuntimeState) {
+  const overlay = await overlayTelegram();
+  const env = envTelegram();
+  const token = state.telegramToken || overlay.token || env.token;
+  const chatId = state.telegramChatId || overlay.chatId || env.chatId;
+  if (token && !state.telegramToken) state.telegramToken = token;
+  if (chatId && !state.telegramChatId) state.telegramChatId = chatId;
+  return { token, chatId };
+}
+
 async function restore() {
   try {
     const raw = await readFile(STATE_PATH, "utf8");
@@ -138,19 +180,29 @@ async function restore() {
       events: Array.isArray(parsed.events) ? parsed.events.slice(0, MAX_EVENTS) : [],
       fills: Array.isArray(parsed.fills) ? parsed.fills.slice(0, MAX_FILLS) : [],
     };
+    const overlay = await overlayTelegram();
+    const env = envTelegram();
+    if (!bag().state.telegramToken) {
+      bag().state.telegramToken = overlay.token || env.token;
+    }
+    if (!bag().state.telegramChatId) {
+      bag().state.telegramChatId = overlay.chatId || env.chatId;
+    }
   } catch {
     /* first run */
   }
 }
 
 async function pingTelegram(state: RuntimeState, text: string) {
-  if (!state.telegramOn || !state.telegramToken || !state.telegramChatId) return;
+  if (!state.telegramOn) return;
+  const { token, chatId } = await resolveTelegram(state);
+  if (!token || !chatId) return;
   try {
-    await fetch(`https://api.telegram.org/bot${state.telegramToken}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: state.telegramChatId,
+        chat_id: chatId,
         text,
         disable_web_page_preview: true,
       }),
@@ -161,7 +213,15 @@ async function pingTelegram(state: RuntimeState, text: string) {
   }
 }
 
+export async function telegramCreds(state: RuntimeState = bag().state) {
+  return resolveTelegram(state);
+}
+
 export function publicRuntime(state: RuntimeState = bag().state) {
+  const env = envTelegram();
+  const linked = Boolean(
+    (state.telegramToken || env.token) && (state.telegramChatId || env.chatId),
+  );
   return {
     running: state.running,
     interval: state.interval,
@@ -170,7 +230,7 @@ export function publicRuntime(state: RuntimeState = bag().state) {
     autopilot: state.autopilot,
     mode: state.mode,
     telegramOn: state.telegramOn,
-    telegramLinked: Boolean(state.telegramToken && state.telegramChatId),
+    telegramLinked: linked,
     liveArmed: state.mode === "live" && Boolean(state.binanceKey),
     testnet: state.binanceTestnet,
     paperCash: state.paperCash,
@@ -199,6 +259,9 @@ export function applyConfig(patch: Partial<RuntimeConfig>) {
   if (patch.telegramOn != null) state.telegramOn = patch.telegramOn;
   if (patch.telegramToken) state.telegramToken = patch.telegramToken.trim();
   if (patch.telegramChatId) state.telegramChatId = patch.telegramChatId.trim();
+  if (state.telegramToken && state.telegramChatId) {
+    void writeTelegramOverlay(state.telegramToken, state.telegramChatId);
+  }
   if (patch.binanceKey) state.binanceKey = patch.binanceKey.trim();
   if (patch.binanceSecret) state.binanceSecret = patch.binanceSecret.trim();
   if (patch.binanceTestnet != null) state.binanceTestnet = patch.binanceTestnet;
@@ -212,6 +275,7 @@ export async function tickOnce() {
   b.ticking = true;
   const state = b.state;
   try {
+    await resolveTelegram(state);
     if (!state.autopilot) {
       state.lastTickAt = Date.now();
       state.running = true;

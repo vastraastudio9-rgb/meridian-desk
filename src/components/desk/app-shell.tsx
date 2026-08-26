@@ -77,7 +77,7 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
     [setSelected],
   );
 
-  const { approved, serverOn, lastError } = useAutopilot(market.data, onFocus);
+  const { approved, serverOn, lastError, telegramLinked } = useAutopilot(market.data, onFocus);
   const approvedSet = useMemo(
     () => new Set(approved.map((row) => row.symbol)),
     [approved],
@@ -157,6 +157,7 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
     telegramChatId,
     onTelegramToken: setTelegramToken,
     onTelegramChatId: setTelegramChatId,
+    telegramLinked,
     mode,
     onMode: setMode,
     binanceKey,

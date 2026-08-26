@@ -4,6 +4,7 @@ dist-static
 .vercel
 .nitro
 .output
+.netlify
 data
 screenshots
 artifacts

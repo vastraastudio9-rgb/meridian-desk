@@ -23,13 +23,24 @@ export const sendTelegram = createServerFn({ method: "POST" })
     const token = String(raw.token ?? "").trim();
     const chatId = String(raw.chatId ?? "").trim();
     const text = String(raw.text ?? "").slice(0, 3500);
-    if (!token || !chatId || !text.trim()) throw new Error("Missing Telegram fields");
+    if (!text.trim()) throw new Error("Missing Telegram fields");
     return { token, chatId, text };
   })
   .handler(async ({ data }) => {
+    let token = data.token;
+    let chatId = data.chatId;
+    if (!token || !chatId) {
+      const { telegramCreds } = await import("@/lib/agents/runtime");
+      const creds = await telegramCreds();
+      token = token || creds.token;
+      chatId = chatId || creds.chatId;
+    }
+    if (!token || !chatId) {
+      return { ok: false as const, error: "Telegram is not linked." };
+    }
     try {
-      await tg(data.token, "sendMessage", {
-        chat_id: data.chatId,
+      await tg(token, "sendMessage", {
+        chat_id: chatId,
         text: data.text,
         disable_web_page_preview: true,
       });
@@ -74,3 +85,7 @@ export const discoverTelegramChat = createServerFn({ method: "POST" })
       };
     }
   });
+
+export async function telegramHostStatus() {
+  return { linked: false, bot: "", chatId: "" };
+}

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { discoverTelegramChat, sendTelegram } from "@/lib/telegram/api";
+import { discoverTelegramChat, sendTelegram, telegramHostStatus } from "@/lib/telegram/api";
 import { cn } from "@/lib/utils";
 
 export function ConnectTelegram({
@@ -11,6 +11,7 @@ export function ConnectTelegram({
   chatId,
   onToken,
   onChatId,
+  hostLinked = false,
   className,
 }: {
   enabled: boolean;
@@ -19,11 +20,27 @@ export function ConnectTelegram({
   chatId: string;
   onToken: (token: string) => void;
   onChatId: (id: string) => void;
+  hostLinked?: boolean;
   className?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const linked = Boolean(token && chatId);
+  const [host, setHost] = useState({ linked: hostLinked, bot: "", chatId: "" });
+  const linked = Boolean((token && chatId) || host.linked || hostLinked);
+
+  useEffect(() => {
+    let live = true;
+    void telegramHostStatus()
+      .then((status) => {
+        if (!live || !status.linked) return;
+        setHost(status);
+        if (!chatId && status.chatId) onChatId(status.chatId);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [chatId, onChatId]);
 
   async function findChat() {
     if (!token.trim()) {
@@ -48,14 +65,13 @@ export function ConnectTelegram({
   }
 
   async function test() {
-    if (!token || !chatId) return;
     setBusy(true);
     setNote(null);
     try {
       const result = await sendTelegram({
         data: {
           token,
-          chatId,
+          chatId: chatId || host.chatId,
           text: "MERIDIAN desk linked. Paper and live calls will land here.",
         },
       });
@@ -72,7 +88,13 @@ export function ConnectTelegram({
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-label text-subtle">Telegram</p>
-          <p className="mt-0.5 text-sm">{linked ? "Ready" : "Not linked"}</p>
+          <p className="mt-0.5 text-sm">
+            {linked
+              ? host.bot
+                ? `Ready · @${host.bot}`
+                : "Ready"
+              : "Not linked"}
+          </p>
         </div>
         <Button
           variant={enabled ? "default" : "outline"}
