@@ -12,6 +12,7 @@ import { AgentRail } from "./agent-rail";
 import { BlotterBar, BlotterList } from "./blotter-bar";
 import { CoinDetail } from "./coin-detail";
 import { DeskHeader } from "./header";
+import { NewsTape } from "./news-tape";
 import { SignalFeed } from "./signal-feed";
 import { TickerBar } from "./ticker";
 import { WatchlistPanel } from "./watchlist";
@@ -194,6 +195,7 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
         closedTrades={market.data?.deskStats.closed ?? 0}
       />
       <TickerBar markets={markets} onSelect={select} />
+      <NewsTape onSelect={select} />
       <BlotterBar
         fills={fills}
         markets={markets}

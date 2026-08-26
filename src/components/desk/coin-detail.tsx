@@ -12,6 +12,7 @@ import { formatQty } from "@/lib/market/size";
 import { effectiveRiskUsd, planLevels, sizeForRisk } from "@/lib/risk/params";
 import { cn } from "@/lib/utils";
 import { PriceChart } from "./price-chart";
+import { CoinNews } from "./coin-news";
 
 const SIDE_LABEL: Record<Side, string> = {
   long: "Long",
@@ -275,6 +276,8 @@ export function CoinDetail({
           . Not fills, not a promise.
         </p>
 
+        <Separator className="my-5" />
+        <CoinNews symbol={row.symbol} />
         <Separator className="my-5" />
 
         <div>
