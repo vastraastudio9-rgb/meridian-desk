@@ -59,13 +59,13 @@ export function effectiveRiskUsd(equity: number, params: RiskParams) {
 export function planLevels(row: MarketRow, params: RiskParams) {
   const entry = row.signal.entry || row.price;
   const atr = row.signal.atr;
-  const fallback = Math.abs(row.signal.entry - row.signal.stop);
+  const structure = Math.abs(row.signal.entry - row.signal.stop);
+  const atrDist =
+    atr != null && atr > 0 ? atr * params.atrStop : Math.abs(entry) * 0.018 * (params.atrStop / 1.6);
   const dist =
-    atr != null && atr > 0
-      ? atr * params.atrStop
-      : fallback > 0
-        ? fallback * (params.atrStop / 1.6)
-        : Math.abs(entry) * 0.018 * (params.atrStop / 1.6);
+    structure > 0 && atr != null && atr > 0 && structure >= atr * 0.7
+      ? Math.max(structure, atr * 0.8)
+      : atrDist;
   const stop = row.signal.side === "short" ? entry + dist : entry - dist;
   const target =
     row.signal.side === "short"

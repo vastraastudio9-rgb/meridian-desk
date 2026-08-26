@@ -260,6 +260,84 @@ export function blankSignal(price: number, reason = "Waiting on candles"): Signa
   };
 }
 
+function lastSwing(candles: Candle[], kind: "high" | "low"): number | null {
+  const { highs, lows } = swingPivots(candles, 2);
+  if (kind === "high") return highs.length ? highs[highs.length - 1]!.px : null;
+  return lows.length ? lows[lows.length - 1]!.px : null;
+}
+
+function barConfirms(bar: Candle, side: "long" | "short"): boolean {
+  const body = Math.abs(bar.c - bar.o);
+  const lower = Math.min(bar.o, bar.c) - bar.l;
+  const upper = bar.h - Math.max(bar.o, bar.c);
+  if (side === "long") {
+    return bar.c >= bar.o || (lower > Math.max(body, 1e-12) * 1.2 && bar.c >= bar.o * 0.998);
+  }
+  return bar.c <= bar.o || (upper > Math.max(body, 1e-12) * 1.2 && bar.c <= bar.o * 1.002);
+}
+
+type EntryGate = { ok: boolean; why: string };
+
+function longEntryGate(opts: {
+  setup: Signal["setup"];
+  higherSide: Side | null | undefined;
+  rsi: number | null;
+  diverge: "bull" | "bear" | null;
+  confirm: boolean;
+  volumeRatio: number | null;
+  atrFrac: number;
+}): EntryGate {
+  if (opts.higherSide === "short") return { ok: false, why: "No long against HTF short" };
+  if (opts.rsi != null && opts.rsi > 70 && opts.diverge !== "bull") {
+    return { ok: false, why: "RSI too high to long" };
+  }
+  if (opts.setup === "pullback") {
+    if (!opts.confirm) return { ok: false, why: "Pullback needs a bullish close" };
+    return { ok: true, why: "" };
+  }
+  if (opts.setup === "breakout") {
+    if (!opts.confirm) return { ok: false, why: "Breakout not closed above" };
+    if (opts.volumeRatio != null && opts.volumeRatio < 1.12) {
+      return { ok: false, why: "Breakout needs volume" };
+    }
+    if (opts.atrFrac > 2.3) return { ok: false, why: "Breakout already extended" };
+    return { ok: true, why: "" };
+  }
+  if (opts.setup === "diverge") return { ok: true, why: "" };
+  if (opts.atrFrac >= 1.5) return { ok: false, why: "Wait for pullback to EMA 21" };
+  return { ok: false, why: "No entry trigger yet" };
+}
+
+function shortEntryGate(opts: {
+  setup: Signal["setup"];
+  higherSide: Side | null | undefined;
+  rsi: number | null;
+  diverge: "bull" | "bear" | null;
+  confirm: boolean;
+  volumeRatio: number | null;
+  atrFrac: number;
+}): EntryGate {
+  if (opts.higherSide === "long") return { ok: false, why: "No short against HTF long" };
+  if (opts.rsi != null && opts.rsi < 30 && opts.diverge !== "bear") {
+    return { ok: false, why: "RSI too low to short" };
+  }
+  if (opts.setup === "pullback") {
+    if (!opts.confirm) return { ok: false, why: "Rally needs a bearish close" };
+    return { ok: true, why: "" };
+  }
+  if (opts.setup === "breakout") {
+    if (!opts.confirm) return { ok: false, why: "Breakdown not closed below" };
+    if (opts.volumeRatio != null && opts.volumeRatio < 1.12) {
+      return { ok: false, why: "Breakdown needs volume" };
+    }
+    if (opts.atrFrac > 2.3) return { ok: false, why: "Breakdown already extended" };
+    return { ok: true, why: "" };
+  }
+  if (opts.setup === "diverge") return { ok: true, why: "" };
+  if (opts.atrFrac >= 1.5) return { ok: false, why: "Wait for rally into EMA 21" };
+  return { ok: false, why: "No entry trigger yet" };
+}
+
 export type SignalCtx = {
   higherSide?: Side | null;
 };
@@ -416,10 +494,11 @@ export function evaluateSignal(candles: Candle[], ctx: SignalCtx = {}): Signal {
   }
 
   let setup: Signal["setup"] = "none";
+  let atrFrac = 0;
   if (ema21Now != null && price > 0 && atrNow && atrNow > 0) {
     const dist = (price - ema21Now) / Math.max(price, 1e-9);
-    const atrFrac = Math.abs(price - ema21Now) / atrNow;
-    const near = Math.abs(dist) <= 0.012 || atrFrac <= 0.85;
+    atrFrac = Math.abs(price - ema21Now) / atrNow;
+    const near = Math.abs(dist) <= 0.012 || atrFrac <= 0.9;
     if (stackBull && price >= ema21Now && near) {
       score += 14;
       bulls += 1;
@@ -430,8 +509,8 @@ export function evaluateSignal(candles: Candle[], ctx: SignalCtx = {}): Signal {
       bears += 1;
       setup = "pullback";
       reasons.push("Rally into EMA 21");
-    } else if (atrFrac >= 2.2) {
-      score *= 0.78;
+    } else if (atrFrac >= 1.6) {
+      score *= 0.72;
       reasons.push("Extended from EMA 21");
     }
   }
@@ -497,20 +576,47 @@ export function evaluateSignal(candles: Candle[], ctx: SignalCtx = {}): Signal {
 
   score = clamp(score, -100, 100);
 
+  if (setup === "none" && diverge) setup = "diverge";
+
   const trendAgree =
     ema9Now != null &&
     ema21Now != null &&
     histNow != null &&
     ((score > 0 && ema9Now > ema21Now && histNow > 0) ||
       (score < 0 && ema9Now < ema21Now && histNow < 0));
-  const trendReady = adxNow == null || adxNow >= 16;
+  const trendReady = adxNow == null || adxNow >= 16 || setup === "diverge";
+
+  const leanLong =
+    trendReady &&
+    (score >= 30 || (score >= 20 && trendAgree) || (diverge === "bull" && score >= 14));
+  const leanShort =
+    trendReady &&
+    (score <= -30 || (score <= -20 && trendAgree) || (diverge === "bear" && score <= -14));
+
+  const longGate = longEntryGate({
+    setup,
+    higherSide: ctx.higherSide,
+    rsi: rsiNow,
+    diverge,
+    confirm: barConfirms(prevBar, "long"),
+    volumeRatio,
+    atrFrac,
+  });
+  const shortGate = shortEntryGate({
+    setup,
+    higherSide: ctx.higherSide,
+    rsi: rsiNow,
+    diverge,
+    confirm: barConfirms(prevBar, "short"),
+    volumeRatio,
+    atrFrac,
+  });
 
   let side: Side = "wait";
-  if ((score >= 30 || (score >= 22 && trendAgree)) && trendReady) side = "long";
-  else if ((score <= -30 || (score <= -22 && trendAgree)) && trendReady) side = "short";
-
-  if (diverge === "bull" && score >= 16) side = "long";
-  if (diverge === "bear" && score <= -16) side = "short";
+  if (leanLong && longGate.ok) side = "long";
+  else if (leanShort && shortGate.ok) side = "short";
+  else if (leanLong && !longGate.ok) reasons.push(longGate.why);
+  else if (leanShort && !shortGate.ok) reasons.push(shortGate.why);
 
   const bullRegime =
     ema9Now != null &&
@@ -525,26 +631,29 @@ export function evaluateSignal(candles: Candle[], ctx: SignalCtx = {}): Signal {
     ema9Now < ema21Now &&
     price < sma50Now;
 
-  if (side === "short" && bullRegime && diverge !== "bear" && score > -52) {
+  if (side === "short" && bullRegime && diverge !== "bear" && setup !== "diverge") {
     side = "wait";
     reasons.push("Blocked — still above 50 SMA");
   }
-  if (side === "long" && bearRegime && diverge !== "bull" && score < 52) {
+  if (side === "long" && bearRegime && diverge !== "bull" && setup !== "diverge") {
     side = "wait";
     reasons.push("Blocked — still below 50 SMA");
   }
 
-  if (setup === "none") {
-    if (diverge) setup = "diverge";
-    else if (side !== "wait") setup = "trend";
-  }
+  if (side === "wait") setup = setup === "none" ? "none" : setup;
 
   const confluence = side === "long" ? bulls : side === "short" ? bears : 0;
   let quality: Signal["quality"] = "—";
   if (side !== "wait") {
-    const extended = reasons.some((r) => r.startsWith("Extended"));
-    if (confluence >= 5 && (adxNow == null || adxNow >= 20) && !extended) quality = "A";
-    else if (confluence >= 3) quality = "B";
+    const extended = atrFrac >= 1.6 && setup !== "breakout";
+    if (
+      (setup === "pullback" || setup === "diverge") &&
+      confluence >= 4 &&
+      (adxNow == null || adxNow >= 18 || setup === "diverge") &&
+      !extended
+    ) {
+      quality = "A";
+    } else if (confluence >= 3 && setup !== "none") quality = "B";
     else quality = "C";
   }
 
@@ -552,22 +661,35 @@ export function evaluateSignal(candles: Candle[], ctx: SignalCtx = {}): Signal {
     side === "wait"
       ? clamp(Math.abs(score) * 0.4 + 16, 12, 48)
       : clamp(
-          46 +
-            confluence * 6 +
+          50 +
+            confluence * 5 +
             (adxNow != null && adxNow >= 25 ? 6 : 0) +
             (ctx.higherSide === side ? 6 : 0) +
-            (quality === "A" ? 6 : 0) +
+            (quality === "A" ? 8 : 0) +
             (setup === "pullback" || setup === "diverge" ? 4 : 0),
-          42,
+          46,
           96,
         ),
   );
 
-  const stopDist = atrNow && atrNow > 0 ? atrNow * 1.6 : price * 0.018;
-  const targetDist = stopDist * 1.85;
+  const atrStop = atrNow && atrNow > 0 ? atrNow * 1.5 : price * 0.016;
   const entry = price;
-  const stop = side === "short" ? entry + stopDist : entry - stopDist;
-  const target = side === "short" ? entry - targetDist : entry + targetDist;
+  let stop = side === "short" ? entry + atrStop : entry - atrStop;
+  if (side === "long") {
+    const swing = lastSwing(closed, "low");
+    if (swing != null && swing < entry) {
+      const dist = entry - swing;
+      if (dist >= atrStop * 0.7 && dist <= atrStop * 2.6) stop = swing;
+    }
+  } else if (side === "short") {
+    const swing = lastSwing(closed, "high");
+    if (swing != null && swing > entry) {
+      const dist = swing - entry;
+      if (dist >= atrStop * 0.7 && dist <= atrStop * 2.6) stop = swing;
+    }
+  }
+  const stopDist = Math.abs(entry - stop);
+  const target = side === "short" ? entry - stopDist * 1.85 : entry + stopDist * 1.85;
 
   let emaBias: Signal["emaBias"] = "flat";
   if (ema9Now != null && ema21Now != null) {

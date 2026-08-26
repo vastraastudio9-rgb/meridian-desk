@@ -9,6 +9,12 @@ export function riskCheck(
   if (signal.side === "wait") {
     return { ok: false, reason: "No setup" };
   }
+  if (signal.setup === "none" || signal.setup === "trend") {
+    return { ok: false, reason: "No entry trigger — wait for pullback" };
+  }
+  if (signal.quality === "C") {
+    return { ok: false, reason: "C setup — not a call" };
+  }
   if (signal.confidence < params.confMin) {
     return { ok: false, reason: `Confidence ${signal.confidence} below ${params.confMin}` };
   }
