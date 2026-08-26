@@ -20,7 +20,7 @@ export function riskCheck(
     if (row.higherSide && row.higherSide !== "wait") {
       return { ok: false, reason: `Against ${higher} ${row.higherSide}` };
     }
-    return { ok: false, reason: `Waiting on ${higher} agreement` };
+    return { ok: false, reason: `${higher} not aligned yet` };
   }
   if (
     signal.confidence < 70 &&

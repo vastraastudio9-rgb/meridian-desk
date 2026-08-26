@@ -1,4 +1,5 @@
 import { evaluateSignal } from "./engine";
+import { sidesAligned } from "./align";
 import type { Candle, MarketRow, MarketSnapshot } from "./types";
 import { HIGHER_TF, type Interval } from "./universe";
 
@@ -49,12 +50,7 @@ export function applyLiveQuotes(
     const signal = evaluateSignal(candles);
     const atrPct =
       signal.atr != null && quote.price > 0 ? signal.atr / quote.price : null;
-    const aligned =
-      signal.side !== "wait" &&
-      (!higher ||
-        row.higherSide === signal.side ||
-        row.higherSide === "wait" ||
-        row.higherSide == null);
+    const aligned = sidesAligned(signal.side, higher, row.higherSide);
     return {
       ...row,
       price: quote.price,

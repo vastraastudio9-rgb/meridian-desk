@@ -3,6 +3,7 @@ import { stampLastCandle, type LiveQuote } from "./live";
 import { startPriceStream, streamQuoteMap, streamQuotes, streamReady } from "./stream";
 import type { Candle, MarketRow, MarketSnapshot, Side } from "./types";
 import { HIGHER_TF, UNIVERSE, type Interval } from "./universe";
+import { sidesAligned } from "./align";
 
 const BINANCE = "https://data-api.binance.vision";
 const CHOP_ATR: Record<Interval, number> = {
@@ -340,9 +341,7 @@ export async function loadMarket(
         const ht = klineCache.get(`${pair.symbol}:${higher}:80`)?.candles;
         if (ht && ht.length >= 26) higherSide = evaluateSignal(ht).side;
       }
-      const aligned =
-        signal.side !== "wait" &&
-        (!higher || higherSide === signal.side || higherSide === "wait" || higherSide == null);
+      const aligned = sidesAligned(signal.side, higher, higherSide);
       const atrPct = signal.atr != null && price > 0 ? signal.atr / price : null;
       const chop = atrPct != null && atrPct < chopFloor;
       markets.push({

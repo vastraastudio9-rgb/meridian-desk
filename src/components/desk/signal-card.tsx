@@ -1,5 +1,6 @@
 import { Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { riskCheck } from "@/lib/agents/policy";
 import { useDesk } from "@/lib/desk-store";
 import type { MarketRow, Side } from "@/lib/market/types";
 import { formatPct, formatPrice } from "@/lib/market/format";
@@ -35,6 +36,7 @@ export function SignalCard({
   const levels = planLevels(row, risk);
   const riskUsd = effectiveRiskUsd(paperCash, risk);
   const { qty } = sizeForRisk(levels.entry, levels.stop, riskUsd, paperCash, risk.maxNotionalPct);
+  const skip = !approved && signal.side !== "wait" ? riskCheck(row, risk) : null;
 
   return (
     <article
@@ -111,6 +113,11 @@ export function SignalCard({
         MACD{" "}
         {signal.macdHist == null ? "—" : signal.macdHist > 0 ? "up" : "down"}
       </p>
+      {skip && !skip.ok && (
+        <p className="relative mt-2 text-[11px] leading-snug text-muted-foreground">
+          Risk skip · {skip.reason}
+        </p>
+      )}
 
       <div className="relative mt-3 flex items-center justify-between gap-2 text-xs text-subtle">
         <span className="font-mono tabular-nums">

@@ -149,7 +149,8 @@ function recentCross(
 
 export function evaluateSignal(candles: Candle[]): Signal {
   const closes = candles.map((c) => c.c);
-  const volumes = candles.map((c) => c.v);
+  const closed = candles.length > 1 ? candles.slice(0, -1) : candles;
+  const volumes = closed.map((c) => c.v);
   const last = candles[candles.length - 1];
   const price = last?.c ?? 0;
 
@@ -168,7 +169,7 @@ export function evaluateSignal(candles: Candle[]): Signal {
   const histNow = lastFinite(macdRes.hist);
   const histPrev = lastFinite(macdRes.hist, 1);
   const atrNow = lastFinite(atrArr);
-  const volNow = last?.v ?? 0;
+  const volNow = volumes[volumes.length - 1] ?? 0;
   const volAvg = lastFinite(volSma);
   const volumeRatio = volAvg && volAvg > 0 ? volNow / volAvg : null;
 
@@ -293,9 +294,11 @@ export function evaluateSignal(candles: Candle[]): Signal {
 
   if (side === "short" && bullRegime && score > -50 && (rsiNow == null || rsiNow < 70)) {
     side = "wait";
+    reasons.push("Blocked — still above 50 SMA");
   }
   if (side === "long" && bearRegime && score < 50 && (rsiNow == null || rsiNow > 30)) {
     side = "wait";
+    reasons.push("Blocked — still below 50 SMA");
   }
 
   const confidence = Math.round(

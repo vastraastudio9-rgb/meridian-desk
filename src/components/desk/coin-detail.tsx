@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { requestBriefing } from "@/lib/ai/briefing";
+import { riskCheck } from "@/lib/agents/policy";
 import { useDesk } from "@/lib/desk-store";
 import type { MarketRow, MarketSnapshot, Side } from "@/lib/market/types";
 import { formatPct, formatPrice, formatUsdCompact } from "@/lib/market/format";
@@ -75,6 +76,7 @@ export function CoinDetail({
   const levels = planLevels(row, risk);
   const riskUsd = effectiveRiskUsd(paperCash, risk);
   const sized = sizeForRisk(levels.entry, levels.stop, riskUsd, paperCash, risk.maxNotionalPct);
+  const skip = signal.side !== "wait" ? riskCheck(row, risk) : null;
 
   async function onBrief() {
     if (!snapshot) return;
@@ -158,6 +160,14 @@ export function CoinDetail({
             Confidence {signal.confidence}
           </span>
         </div>
+        {skip && !skip.ok && (
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            Risk skip · {skip.reason}
+          </p>
+        )}
+        {skip?.ok && (
+          <p className="mt-2 text-xs leading-relaxed text-long">Call · {skip.reason}</p>
+        )}
         <ul className="mt-3 space-y-1.5">
           {signal.reasons.map((reason) => (
             <li key={reason} className="text-sm leading-relaxed text-muted-foreground">
