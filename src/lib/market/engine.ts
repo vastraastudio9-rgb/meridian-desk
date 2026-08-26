@@ -267,9 +267,16 @@ export function evaluateSignal(candles: Candle[]): Signal {
 
   score = clamp(score, -100, 100);
 
+  const trendAgree =
+    ema9Now != null &&
+    ema21Now != null &&
+    histNow != null &&
+    ((score > 0 && ema9Now > ema21Now && histNow > 0) ||
+      (score < 0 && ema9Now < ema21Now && histNow < 0));
+
   let side: Side = "wait";
-  if (score >= 36) side = "long";
-  else if (score <= -36) side = "short";
+  if (score >= 28 || (score >= 20 && trendAgree)) side = "long";
+  else if (score <= -28 || (score <= -20 && trendAgree)) side = "short";
 
   const bullRegime =
     ema9Now != null &&
@@ -284,10 +291,10 @@ export function evaluateSignal(candles: Candle[]): Signal {
     ema9Now < ema21Now &&
     price < sma50Now;
 
-  if (side === "short" && bullRegime && (rsiNow == null || rsiNow < 68)) {
+  if (side === "short" && bullRegime && score > -50 && (rsiNow == null || rsiNow < 70)) {
     side = "wait";
   }
-  if (side === "long" && bearRegime && (rsiNow == null || rsiNow > 32)) {
+  if (side === "long" && bearRegime && score < 50 && (rsiNow == null || rsiNow > 30)) {
     side = "wait";
   }
 
@@ -308,6 +315,10 @@ export function evaluateSignal(candles: Candle[]): Signal {
   }
 
   const uniqueReasons = reasons.filter((r, i, arr) => arr.indexOf(r) === i).slice(0, 3);
+  if (rsiNow != null && !uniqueReasons.some((r) => r.startsWith("RSI"))) {
+    uniqueReasons.unshift(`RSI ${rsiNow.toFixed(0)}`);
+    if (uniqueReasons.length > 3) uniqueReasons.pop();
+  }
   if (uniqueReasons.length === 0) uniqueReasons.push("No dominant setup on this scan");
 
   return {

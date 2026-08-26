@@ -79,7 +79,7 @@ export const useDesk = create<DeskState>()(
     (set, get) => ({
       watchlist: [...DEFAULT_WATCHLIST],
       interval: "1h",
-      filter: "calls",
+      filter: "all",
       selected: null,
       autopilot: true,
       mode: "paper",
@@ -210,11 +210,16 @@ export const useDesk = create<DeskState>()(
     }),
     {
       name: "meridian-desk",
+      version: 2,
       skipHydration: true,
+      migrate: (persisted) => ({
+        ...(persisted as object),
+        filter: "all" as const,
+      }) as never,
       partialize: (s) => ({
         watchlist: s.watchlist,
         interval: s.interval,
-        filter: s.filter === "calls" ? "calls" : s.filter,
+        filter: s.filter,
         autopilot: s.autopilot,
         mode: s.mode,
         paperCash: s.paperCash,

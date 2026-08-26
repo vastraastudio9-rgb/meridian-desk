@@ -99,6 +99,7 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
 
   const longs = markets.filter((row) => row.signal.side === "long").length;
   const shorts = markets.filter((row) => row.signal.side === "short").length;
+  const waits = markets.filter((row) => row.signal.side === "wait").length;
 
   useEffect(() => {
     useDesk.getState().setHydrated(true);
@@ -119,7 +120,6 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
 
   function toggleAutopilot(on: boolean) {
     setAutopilot(on);
-    if (on) setFilter("calls");
   }
 
   const watchProps = {
@@ -185,6 +185,7 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
         autopilot={autopilot}
         longs={longs}
         shorts={shorts}
+        waits={waits}
         aligned={market.data?.breadth.aligned ?? 0}
         hitRate={market.data?.deskStats.winRate ?? null}
         closedTrades={market.data?.deskStats.closed ?? 0}

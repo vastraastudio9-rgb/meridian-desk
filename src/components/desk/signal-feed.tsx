@@ -1,12 +1,13 @@
 import type { MarketRow } from "@/lib/market/types";
 import type { SignalFilter } from "@/lib/desk-store";
+import { UNIVERSE } from "@/lib/market/universe";
 import { cn } from "@/lib/utils";
 import { SignalCard } from "./signal-card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const FILTERS: { id: SignalFilter; label: string }[] = [
-  { id: "calls", label: "Calls" },
   { id: "all", label: "All" },
+  { id: "calls", label: "Calls" },
   { id: "long", label: "Long" },
   { id: "short", label: "Short" },
   { id: "wait", label: "Wait" },
@@ -42,7 +43,7 @@ export function SignalFeed({
           <p className="text-xs text-muted-foreground">
             {filter === "calls"
               ? `${rows.length} call${rows.length === 1 ? "" : "s"} cleared by risk`
-              : `${rows.length} pair${rows.length === 1 ? "" : "s"} on this pass`}
+              : `${rows.length} of ${UNIVERSE.length} pairs`}
           </p>
         </div>
         <div

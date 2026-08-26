@@ -25,12 +25,14 @@ export const UNIVERSE: Pair[] = [
   { symbol: "LINKUSDT", base: "LINK", name: "Chainlink" },
   { symbol: "TONUSDT", base: "TON", name: "Toncoin" },
   { symbol: "SUIUSDT", base: "SUI", name: "Sui" },
+  { symbol: "TRXUSDT", base: "TRX", name: "TRON" },
   { symbol: "DOTUSDT", base: "DOT", name: "Polkadot" },
   { symbol: "NEARUSDT", base: "NEAR", name: "NEAR" },
   { symbol: "APTUSDT", base: "APT", name: "Aptos" },
   { symbol: "UNIUSDT", base: "UNI", name: "Uniswap" },
   { symbol: "AAVEUSDT", base: "AAVE", name: "Aave" },
   { symbol: "LTCUSDT", base: "LTC", name: "Litecoin" },
+  { symbol: "BCHUSDT", base: "BCH", name: "Bitcoin Cash" },
   { symbol: "ARBUSDT", base: "ARB", name: "Arbitrum" },
   { symbol: "OPUSDT", base: "OP", name: "Optimism" },
   { symbol: "INJUSDT", base: "INJ", name: "Injective" },
@@ -38,6 +40,20 @@ export const UNIVERSE: Pair[] = [
   { symbol: "FILUSDT", base: "FIL", name: "Filecoin" },
   { symbol: "RENDERUSDT", base: "RENDER", name: "Render" },
   { symbol: "PEPEUSDT", base: "PEPE", name: "Pepe" },
+  { symbol: "SHIBUSDT", base: "SHIB", name: "Shiba Inu" },
+  { symbol: "WIFUSDT", base: "WIF", name: "dogwifhat" },
+  { symbol: "TAOUSDT", base: "TAO", name: "Bittensor" },
+  { symbol: "HBARUSDT", base: "HBAR", name: "Hedera" },
+  { symbol: "FETUSDT", base: "FET", name: "Fetch.ai" },
+  { symbol: "SEIUSDT", base: "SEI", name: "Sei" },
+  { symbol: "ONDOUSDT", base: "ONDO", name: "Ondo" },
+  { symbol: "WLDUSDT", base: "WLD", name: "Worldcoin" },
+  { symbol: "ENAUSDT", base: "ENA", name: "Ethena" },
+  { symbol: "XLMUSDT", base: "XLM", name: "Stellar" },
+  { symbol: "TIAUSDT", base: "TIA", name: "Celestia" },
+  { symbol: "JUPUSDT", base: "JUP", name: "Jupiter" },
+  { symbol: "POLUSDT", base: "POL", name: "Polygon" },
+  { symbol: "CRVUSDT", base: "CRV", name: "Curve" },
 ];
 
 export const HIGHER_TF: Record<Interval, Interval | null> = {
@@ -58,6 +74,8 @@ export const DEFAULT_WATCHLIST = [
   "DOGEUSDT",
   "AVAXUSDT",
   "LINKUSDT",
+  "SUIUSDT",
+  "PEPEUSDT",
 ] as const;
 
 export function pairLabel(symbol: string) {

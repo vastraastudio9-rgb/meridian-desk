@@ -17,6 +17,7 @@ type HeaderProps = {
   autopilot: boolean;
   longs: number;
   shorts: number;
+  waits: number;
   aligned: number;
   hitRate: number | null;
   closedTrades: number;
@@ -34,6 +35,7 @@ export function DeskHeader({
   autopilot,
   longs,
   shorts,
+  waits,
   aligned,
   hitRate,
   closedTrades,
@@ -96,7 +98,7 @@ export function DeskHeader({
           </span>
           <span className="text-subtle">·</span>
           <span className="tabular-nums">
-            {longs} long · {shorts} short · {aligned} aligned
+            {longs} long · {shorts} short · {waits} wait · {aligned} aligned
           </span>
           {hitRate != null && (
             <>

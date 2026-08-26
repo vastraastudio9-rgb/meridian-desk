@@ -2,7 +2,7 @@ import { evaluateSignal, backtestHits, mergeHitStats } from "./engine";
 import { stampLastCandle, type LiveQuote } from "./live";
 import { startPriceStream, streamQuoteMap, streamQuotes, streamReady } from "./stream";
 import type { Candle, MarketRow, MarketSnapshot, Side } from "./types";
-import { HIGHER_TF, PAIR_BY_SYMBOL, UNIVERSE, type Interval } from "./universe";
+import { HIGHER_TF, UNIVERSE, type Interval } from "./universe";
 
 const BINANCE = "https://data-api.binance.vision";
 const CHOP_ATR: Record<Interval, number> = {
@@ -17,10 +17,10 @@ const klineCache = new Map<string, KlineEntry>();
 const lastGood = new Map<Interval, MarketSnapshot>();
 
 function klineTtl(interval: Interval) {
-  if (interval === "15m") return 45_000;
-  if (interval === "1h") return 90_000;
-  if (interval === "4h") return 180_000;
-  return 300_000;
+  if (interval === "15m") return 60_000;
+  if (interval === "1h") return 120_000;
+  if (interval === "4h") return 240_000;
+  return 400_000;
 }
 
 type BinanceTicker = {
@@ -49,6 +49,39 @@ type BinanceKline = [
 ];
 
 let restPausedUntil = 0;
+let klineHydrated = false;
+const lastCandles = new Map<string, Candle[]>();
+const KLINE_LS = "meridian-klines-v1";
+
+function hydrateKlines() {
+  if (klineHydrated) return;
+  klineHydrated = true;
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    const raw = sessionStorage.getItem(KLINE_LS);
+    if (!raw) return;
+    const obj = JSON.parse(raw) as Record<string, KlineEntry>;
+    for (const [key, entry] of Object.entries(obj)) {
+      if (entry?.candles?.length) {
+        klineCache.set(key, entry);
+        lastCandles.set(key, entry.candles);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistKlines() {
+  if (typeof sessionStorage === "undefined") return;
+  const obj: Record<string, KlineEntry> = {};
+  for (const [key, entry] of klineCache) obj[key] = entry;
+  try {
+    sessionStorage.setItem(KLINE_LS, JSON.stringify(obj));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 async function fetchJson<T>(url: string): Promise<T> {
   if (Date.now() < restPausedUntil) {
@@ -59,7 +92,7 @@ async function fetchJson<T>(url: string): Promise<T> {
     signal: AbortSignal.timeout(12_000),
   });
   if (res.status === 418 || res.status === 429) {
-    restPausedUntil = Date.now() + 8 * 60_000;
+    restPausedUntil = Date.now() + 90_000;
     throw new Error(`Market data error ${res.status}`);
   }
   if (!res.ok) {
@@ -97,8 +130,7 @@ async function mapPool<T, R>(
   return out;
 }
 
-function tickersFromStream(symbols: string[]): Map<string, BinanceTicker> | null {
-  if (!streamReady()) return null;
+function tickersFromStream(symbols: string[]): Map<string, BinanceTicker> {
   const map = streamQuoteMap();
   const out = new Map<string, BinanceTicker>();
   for (const symbol of symbols) {
@@ -114,45 +146,36 @@ function tickersFromStream(symbols: string[]): Map<string, BinanceTicker> | null
       quoteVolume: String(q.quoteVolume),
     });
   }
-  return out.size >= Math.min(8, symbols.length) ? out : null;
+  return out;
 }
 
-export async function loadTickers(symbols: string[]): Promise<Map<string, BinanceTicker>> {
-  const fromStream = tickersFromStream(symbols);
-  if (fromStream) return fromStream;
-  if (Date.now() < restPausedUntil) {
-    const cached = lastGood.get("1h") ?? [...lastGood.values()][0];
-    if (cached) {
-      return new Map(
-        cached.markets.map((m) => [
-          m.symbol,
-          {
-            symbol: m.symbol,
-            lastPrice: String(m.price),
-            priceChangePercent: String(m.changePct),
-            highPrice: String(m.high),
-            lowPrice: String(m.low),
-            volume: String(m.volume),
-            quoteVolume: String(m.quoteVolume),
-          },
-        ]),
-      );
-    }
-    throw new Error("Ticker feed paused");
-  }
-  const compact = encodeURIComponent(JSON.stringify(symbols));
-  try {
+async function loadTickersRest(symbols: string[]): Promise<Map<string, BinanceTicker>> {
+  const out = new Map<string, BinanceTicker>();
+  const chunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += 8) chunks.push(symbols.slice(i, i + 8));
+  await mapPool(chunks, 2, async (chunk) => {
+    const compact = encodeURIComponent(JSON.stringify(chunk));
     const tickers = await fetchJson<BinanceTicker[]>(
       `${BINANCE}/api/v3/ticker/24hr?symbols=${compact}`,
     );
-    return new Map(tickers.map((t) => [t.symbol, t]));
-  } catch {
-    const cached = lastGood.get("1h");
+    for (const t of tickers) out.set(t.symbol, t);
+    return 0;
+  });
+  return out;
+}
+
+export async function loadTickers(symbols: string[]): Promise<Map<string, BinanceTicker>> {
+  startPriceStream();
+  const fromStream = tickersFromStream(symbols);
+  if (fromStream.size >= symbols.length) return fromStream;
+
+  const missing = symbols.filter((s) => !fromStream.has(s));
+  if (Date.now() < restPausedUntil) {
+    const cached = lastGood.get("1h") ?? [...lastGood.values()][0];
     if (cached) {
-      return new Map(
-        cached.markets.map((m) => [
-          m.symbol,
-          {
+      for (const m of cached.markets) {
+        if (!fromStream.has(m.symbol)) {
+          fromStream.set(m.symbol, {
             symbol: m.symbol,
             lastPrice: String(m.price),
             priceChangePercent: String(m.changePct),
@@ -160,10 +183,37 @@ export async function loadTickers(symbols: string[]): Promise<Map<string, Binanc
             lowPrice: String(m.low),
             volume: String(m.volume),
             quoteVolume: String(m.quoteVolume),
-          },
-        ]),
-      );
+          });
+        }
+      }
     }
+    return fromStream;
+  }
+
+  try {
+    const rest = await loadTickersRest(missing.length ? missing : symbols);
+    for (const [symbol, ticker] of rest) {
+      if (!fromStream.has(symbol)) fromStream.set(symbol, ticker);
+    }
+    return fromStream;
+  } catch {
+    const cached = lastGood.get("1h") ?? [...lastGood.values()][0];
+    if (cached) {
+      for (const m of cached.markets) {
+        if (!fromStream.has(m.symbol)) {
+          fromStream.set(m.symbol, {
+            symbol: m.symbol,
+            lastPrice: String(m.price),
+            priceChangePercent: String(m.changePct),
+            highPrice: String(m.high),
+            lowPrice: String(m.low),
+            volume: String(m.volume),
+            quoteVolume: String(m.quoteVolume),
+          });
+        }
+      }
+    }
+    if (fromStream.size > 0) return fromStream;
     throw new Error("Ticker feed unreachable");
   }
 }
@@ -211,13 +261,26 @@ async function loadKlinesCached(
   interval: Interval,
   limit = 100,
 ): Promise<Candle[]> {
+  hydrateKlines();
   const key = `${symbol}:${interval}:${limit}`;
   const hit = klineCache.get(key);
-  if (hit && Date.now() - hit.at < klineTtl(interval)) return hit.candles;
-  if (Date.now() < restPausedUntil) return hit?.candles ?? [];
-  const candles = await loadKlines(symbol, interval, limit);
-  klineCache.set(key, { at: Date.now(), candles });
-  return candles;
+  if (hit && Date.now() - hit.at < klineTtl(interval) && hit.candles.length >= 26) {
+    return hit.candles;
+  }
+  if (Date.now() < restPausedUntil) {
+    return hit?.candles ?? lastCandles.get(key) ?? [];
+  }
+  try {
+    const candles = await loadKlines(symbol, interval, limit);
+    if (candles.length >= 26) {
+      klineCache.set(key, { at: Date.now(), candles });
+      lastCandles.set(key, candles);
+      return candles;
+    }
+  } catch {
+    /* fall through */
+  }
+  return hit?.candles ?? lastCandles.get(key) ?? [];
 }
 
 export async function loadMarket(
@@ -225,75 +288,83 @@ export async function loadMarket(
   options?: { aiAvailable?: boolean },
 ): Promise<MarketSnapshot> {
   startPriceStream();
+  hydrateKlines();
   try {
     const symbols = UNIVERSE.map((p) => p.symbol);
     const tickerBySymbol = await loadTickers(symbols);
     const higher = HIGHER_TF[interval];
 
-    const klineSets = await mapPool(symbols, 6, async (symbol) => {
-      try {
-        const candles = await loadKlinesCached(symbol, interval);
-        return { symbol, candles };
-      } catch {
-        return { symbol, candles: [] as Candle[] };
-      }
+    const klineSets = await mapPool(symbols, 8, async (symbol) => {
+      const candles = await loadKlinesCached(symbol, interval);
+      return { symbol, candles };
     });
 
-    const draft: Array<{ symbol: string; candles: Candle[]; side: Side }> = [];
-    for (const { symbol, candles } of klineSets) {
-      if (candles.length < 30) continue;
-      draft.push({ symbol, candles, side: evaluateSignal(candles).side });
-    }
+    const bySymbol = new Map(klineSets.map((row) => [row.symbol, row.candles]));
 
-    const needHigher = higher
-      ? draft.filter((d) => d.side !== "wait").map((d) => d.symbol)
-      : [];
-    const higherSideBySymbol = new Map<string, Side>();
-    if (higher && needHigher.length > 0) {
-      const higherSets = await mapPool(needHigher, 4, async (symbol) => {
-        try {
-          const candles = await loadKlinesCached(symbol, higher, 80);
-          return { symbol, side: evaluateSignal(candles).side };
-        } catch {
-          return { symbol, side: "wait" as Side };
-        }
+    if (higher) {
+      await mapPool(symbols, 6, async (symbol) => {
+        if ((bySymbol.get(symbol)?.length ?? 0) < 26) return 0;
+        await loadKlinesCached(symbol, higher, 80);
+        return 0;
       });
-      for (const row of higherSets) higherSideBySymbol.set(row.symbol, row.side);
     }
 
     const chopFloor = CHOP_ATR[interval];
     const markets: MarketRow[] = [];
-    for (const { symbol, candles } of draft) {
-      const pair = PAIR_BY_SYMBOL.get(symbol);
-      const ticker = tickerBySymbol.get(symbol);
-      if (!pair || !ticker) continue;
-      const price = Number(ticker.lastPrice);
+    for (const pair of UNIVERSE) {
+      const ticker = tickerBySymbol.get(pair.symbol);
+      const cachedSnap = lastGood.get(interval)?.markets.find((m) => m.symbol === pair.symbol);
+      const price = Number(ticker?.lastPrice ?? cachedSnap?.price ?? 0);
       if (!Number.isFinite(price) || price <= 0) continue;
-      const liveCandles = stampLastCandle(candles, price);
-      const signal = evaluateSignal(liveCandles);
-      const atrPct =
-        signal.atr != null && price > 0 ? signal.atr / price : null;
-      const higherSide = higher ? (higherSideBySymbol.get(symbol) ?? null) : null;
+      const candles = bySymbol.get(pair.symbol) ?? [];
+      const liveCandles = candles.length >= 26 ? stampLastCandle(candles, price) : candles;
+      const signal =
+        liveCandles.length >= 26
+          ? evaluateSignal(liveCandles)
+          : {
+              side: "wait" as const,
+              confidence: 12,
+              score: 0,
+              reasons: ["Waiting on candles"],
+              entry: price,
+              stop: price,
+              target: price,
+              rsi: null,
+              macdHist: null,
+              emaBias: "flat" as const,
+              volumeRatio: null,
+              atr: null,
+            };
+      let higherSide: Side | null = null;
+      if (higher && liveCandles.length >= 26) {
+        const ht = klineCache.get(`${pair.symbol}:${higher}:80`)?.candles;
+        if (ht && ht.length >= 26) higherSide = evaluateSignal(ht).side;
+      }
       const aligned =
         signal.side !== "wait" &&
-        (!higher ||
-          higherSide === signal.side ||
-          higherSide === "wait" ||
-          higherSide == null);
+        (!higher || higherSide === signal.side || higherSide === "wait" || higherSide == null);
+      const atrPct = signal.atr != null && price > 0 ? signal.atr / price : null;
       const chop = atrPct != null && atrPct < chopFloor;
       markets.push({
-        symbol,
+        symbol: pair.symbol,
         base: pair.base,
         name: pair.name,
         price,
-        changePct: Number(ticker.priceChangePercent),
-        high: Number(ticker.highPrice),
-        low: Number(ticker.lowPrice),
-        volume: Number(ticker.volume),
-        quoteVolume: Number(ticker.quoteVolume),
+        changePct: Number(ticker?.priceChangePercent ?? cachedSnap?.changePct ?? 0),
+        high: Number(ticker?.highPrice ?? cachedSnap?.high ?? price),
+        low: Number(ticker?.lowPrice ?? cachedSnap?.low ?? price),
+        volume: Number(ticker?.volume ?? cachedSnap?.volume ?? 0),
+        quoteVolume: Number(ticker?.quoteVolume ?? cachedSnap?.quoteVolume ?? 0),
         candles: liveCandles,
         signal,
-        stats: backtestHits(liveCandles),
+        stats: liveCandles.length >= 56 ? backtestHits(liveCandles) : cachedSnap?.stats ?? {
+          closed: 0,
+          wins: 0,
+          losses: 0,
+          open: 0,
+          winRate: null,
+          expectancyR: null,
+        },
         higherInterval: higher,
         higherSide,
         aligned,
@@ -329,6 +400,7 @@ export async function loadMarket(
       throw new Error("No candles yet");
     }
     if (markets.length > 0) lastGood.set(interval, data);
+    persistKlines();
     return data;
   } catch {
     const cached = lastGood.get(interval) ?? [...lastGood.values()][0];
@@ -342,41 +414,45 @@ export async function loadMarket(
     }
     startPriceStream();
     const quotes = streamQuotes();
+    const quoteMap = new Map(quotes.map((q) => [q.symbol, q]));
+    const prior = lastGood.get(interval)?.markets ?? [];
+    const priorMap = new Map(prior.map((m) => [m.symbol, m]));
     const markets: MarketRow[] = [];
-    for (const q of quotes) {
-      const pair = PAIR_BY_SYMBOL.get(q.symbol);
-      if (!pair) continue;
+    for (const pair of UNIVERSE) {
+      const q = quoteMap.get(pair.symbol);
+      const old = priorMap.get(pair.symbol);
+      if (!q && !old) continue;
       markets.push({
-        symbol: q.symbol,
+        symbol: pair.symbol,
         base: pair.base,
         name: pair.name,
-        price: q.price,
-        changePct: q.changePct,
-        high: q.high,
-        low: q.low,
-        volume: q.volume,
-        quoteVolume: q.quoteVolume,
-        candles: [],
-        signal: {
+        price: q?.price ?? old!.price,
+        changePct: q?.changePct ?? old!.changePct,
+        high: q?.high ?? old!.high,
+        low: q?.low ?? old!.low,
+        volume: q?.volume ?? old!.volume,
+        quoteVolume: q?.quoteVolume ?? old!.quoteVolume,
+        candles: old?.candles ?? [],
+        signal: old?.signal ?? {
           side: "wait",
           confidence: 0,
           score: 0,
           reasons: ["Waiting on candles"],
-          entry: q.price,
-          stop: q.price,
-          target: q.price,
+          entry: q?.price ?? old!.price,
+          stop: q?.price ?? old!.price,
+          target: q?.price ?? old!.price,
           rsi: null,
           macdHist: null,
           emaBias: "flat",
           volumeRatio: null,
           atr: null,
         },
-        stats: { closed: 0, wins: 0, losses: 0, open: 0, winRate: null, expectancyR: null },
+        stats: old?.stats ?? { closed: 0, wins: 0, losses: 0, open: 0, winRate: null, expectancyR: null },
         higherInterval: HIGHER_TF[interval],
-        higherSide: null,
-        aligned: false,
-        chop: false,
-        atrPct: null,
+        higherSide: old?.higherSide ?? null,
+        aligned: old?.aligned ?? false,
+        chop: old?.chop ?? false,
+        atrPct: old?.atrPct ?? null,
       });
     }
     return {

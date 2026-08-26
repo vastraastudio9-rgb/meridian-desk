@@ -103,6 +103,14 @@ export function SignalCard({
       <p className="relative mt-3 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
         {signal.reasons.join(" · ")}
       </p>
+      <p className="relative mt-2 font-mono text-[11px] tabular-nums text-subtle">
+        RSI {signal.rsi ?? "—"}
+        <span className="mx-1.5 text-border-strong">·</span>
+        EMA {signal.emaBias}
+        <span className="mx-1.5 text-border-strong">·</span>
+        MACD{" "}
+        {signal.macdHist == null ? "—" : signal.macdHist > 0 ? "up" : "down"}
+      </p>
 
       <div className="relative mt-3 flex items-center justify-between gap-2 text-xs text-subtle">
         <span className="font-mono tabular-nums">
