@@ -187,6 +187,8 @@ export function AppShell({ initial }: { initial?: MarketSnapshot | null }) {
         shorts={shorts}
         waits={waits}
         aligned={market.data?.breadth.aligned ?? 0}
+        pending={market.data?.breadth.pending ?? 0}
+        against={market.data?.breadth.against ?? 0}
         hitRate={market.data?.deskStats.winRate ?? null}
         closedTrades={market.data?.deskStats.closed ?? 0}
       />

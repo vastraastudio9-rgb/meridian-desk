@@ -15,12 +15,9 @@ export function riskCheck(
   if (params.blockChop && row.chop) {
     return { ok: false, reason: "Chop — ATR too thin" };
   }
-  if (params.requireAlign && row.higherInterval && !row.aligned) {
-    const higher = row.higherInterval.toUpperCase();
-    if (row.higherSide && row.higherSide !== "wait") {
-      return { ok: false, reason: `Against ${higher} ${row.higherSide}` };
-    }
-    return { ok: false, reason: `${higher} not aligned yet` };
+  if (params.requireAlign && row.alignState === "against") {
+    const higher = (row.higherInterval ?? "htf").toUpperCase();
+    return { ok: false, reason: `Against ${higher} ${row.higherSide}` };
   }
   if (
     signal.confidence < 70 &&
@@ -30,9 +27,15 @@ export function riskCheck(
   ) {
     return { ok: false, reason: `Paper hit ${stats.winRate}% — risk passed` };
   }
+  const htfNote =
+    row.alignState === "aligned" && row.higherInterval
+      ? ` · ${row.higherInterval} aligned`
+      : row.alignState === "pending" && row.higherInterval
+        ? ` · ${row.higherInterval} pending`
+        : "";
   return {
     ok: true,
-    reason: `${signal.side} · conf ${signal.confidence}${row.aligned && row.higherInterval ? ` · ${row.higherInterval} aligned` : ""}`,
+    reason: `${signal.side} · conf ${signal.confidence}${htfNote}`,
   };
 }
 
@@ -57,10 +60,10 @@ export function tapeFingerprint(rows: MarketRow[]): string {
 }
 
 export function scanLine(snapshot: MarketSnapshot): { title: string; detail: string } {
-  const { longs, shorts, waits, aligned } = snapshot.breadth;
+  const { longs, shorts, waits, aligned, pending, against } = snapshot.breadth;
   return {
     title: `Scan ${snapshot.interval} · ${snapshot.markets.length} pairs`,
-    detail: `${longs} long · ${shorts} short · ${waits} wait · ${aligned} aligned`,
+    detail: `${longs} long · ${shorts} short · ${waits} wait · ${aligned} aligned · ${pending} htf wait · ${against} vs htf`,
   };
 }
 
@@ -93,7 +96,7 @@ export function localAnalystCopy(rows: MarketRow[]): {
     .slice(0, 3)
     .map(
       (r) =>
-        `${r.base} ${r.signal.side} at ${r.signal.confidence}${r.aligned ? " aligned" : ""} — ${r.signal.reasons[0] ?? "setup"}`,
+        `${r.base} ${r.signal.side} at ${r.signal.confidence}${r.alignState === "aligned" ? " aligned" : r.alignState === "pending" ? " htf wait" : ""} — ${r.signal.reasons[0] ?? "setup"}`,
     )
     .join(" ");
   return { headline, notes, stance, focus };
@@ -112,7 +115,7 @@ export function formatCallMessage(
     : interval;
   return [
     `MERIDIAN ${signal.side.toUpperCase()} · ${row.base}`,
-    `${mode.toUpperCase()} · ${tf} · conf ${signal.confidence}${row.aligned ? " · aligned" : ""}`,
+    `${mode.toUpperCase()} · ${tf} · conf ${signal.confidence}${row.alignState === "aligned" ? " · aligned" : row.alignState === "pending" ? " · htf wait" : ""}`,
     `Entry ${signal.entry}  Stop ${signal.stop}  Target ${signal.target}`,
     `Size ${qty} ${row.base} · risk $${riskUsd}`,
     signal.reasons.slice(0, 2).join(" · "),

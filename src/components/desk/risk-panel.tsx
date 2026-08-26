@@ -125,7 +125,7 @@ export function RiskPanel({
           aria-pressed={p.requireAlign}
           onClick={() => onChange({ requireAlign: !p.requireAlign })}
         >
-          HTF align
+          HTF block vs
         </Button>
         <Button
           variant={p.blockChop ? "default" : "outline"}

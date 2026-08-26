@@ -199,13 +199,15 @@ export function CoinDetail({
             value={
               !row.higherInterval
                 ? "—"
-                : row.aligned
+                : row.alignState === "aligned"
                   ? "Aligned"
-                  : row.higherSide
-                    ? row.higherSide
-                    : "Wait"
+                  : row.alignState === "pending"
+                    ? "Wait"
+                    : row.higherSide
+                      ? `vs ${row.higherSide}`
+                      : "Wait"
             }
-            tone={row.aligned ? "long" : "muted"}
+            tone={row.alignState === "aligned" ? "long" : row.alignState === "against" ? "short" : "muted"}
           />
         </div>
 

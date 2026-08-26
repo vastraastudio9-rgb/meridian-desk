@@ -35,11 +35,15 @@ export type HitStats = {
   expectancyR: number | null;
 };
 
+export type AlignState = "aligned" | "against" | "pending" | "none";
+
 export type Breadth = {
   longs: number;
   shorts: number;
   waits: number;
   aligned: number;
+  pending: number;
+  against: number;
 };
 
 export type MarketRow = {
@@ -57,6 +61,7 @@ export type MarketRow = {
   stats: HitStats;
   higherInterval: Interval | null;
   higherSide: Side | null;
+  alignState: AlignState;
   aligned: boolean;
   chop: boolean;
   atrPct: number | null;

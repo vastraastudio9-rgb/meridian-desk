@@ -3,7 +3,7 @@ import { stampLastCandle, type LiveQuote } from "./live";
 import { startPriceStream, streamQuoteMap, streamQuotes, streamReady } from "./stream";
 import type { Candle, MarketRow, MarketSnapshot, Side } from "./types";
 import { HIGHER_TF, UNIVERSE, type Interval } from "./universe";
-import { sidesAligned } from "./align";
+import { sidesAligned, htfAlign, alignBoost } from "./align";
 
 const BINANCE = "https://data-api.binance.vision";
 const CHOP_ATR: Record<Interval, number> = {
@@ -341,6 +341,7 @@ export async function loadMarket(
         const ht = klineCache.get(`${pair.symbol}:${higher}:80`)?.candles;
         if (ht && ht.length >= 26) higherSide = evaluateSignal(ht).side;
       }
+      const alignState = htfAlign(signal.side, higher, higherSide);
       const aligned = sidesAligned(signal.side, higher, higherSide);
       const atrPct = signal.atr != null && price > 0 ? signal.atr / price : null;
       const chop = atrPct != null && atrPct < chopFloor;
@@ -366,6 +367,7 @@ export async function loadMarket(
         },
         higherInterval: higher,
         higherSide,
+        alignState,
         aligned,
         chop,
         atrPct,
@@ -374,7 +376,7 @@ export async function loadMarket(
 
     markets.sort((a, b) => {
       const rank = (s: MarketRow) =>
-        (s.aligned ? 400 : 0) + (s.signal.side === "wait" ? 0 : 1000) + s.signal.confidence;
+        alignBoost(s.alignState) + (s.signal.side === "wait" ? 0 : 1000) + s.signal.confidence;
       return rank(b) - rank(a);
     });
 
@@ -392,7 +394,9 @@ export async function loadMarket(
         longs,
         shorts,
         waits: markets.length - longs - shorts,
-        aligned: markets.filter((m) => m.aligned).length,
+        aligned: markets.filter((m) => m.alignState === "aligned").length,
+        pending: markets.filter((m) => m.alignState === "pending").length,
+        against: markets.filter((m) => m.alignState === "against").length,
       },
     };
     if (markets.length === 0 && streamReady()) {
@@ -449,6 +453,7 @@ export async function loadMarket(
         stats: old?.stats ?? { closed: 0, wins: 0, losses: 0, open: 0, winRate: null, expectancyR: null },
         higherInterval: HIGHER_TF[interval],
         higherSide: old?.higherSide ?? null,
+        alignState: old?.alignState ?? "none",
         aligned: old?.aligned ?? false,
         chop: old?.chop ?? false,
         atrPct: old?.atrPct ?? null,
@@ -467,6 +472,8 @@ export async function loadMarket(
         shorts: 0,
         waits: markets.length,
         aligned: 0,
+        pending: 0,
+        against: 0,
       },
     };
   }

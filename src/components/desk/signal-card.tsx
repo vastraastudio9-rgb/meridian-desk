@@ -63,9 +63,19 @@ export function SignalCard({
                 Call
               </span>
             )}
-            {row.aligned && (
+            {row.alignState === "aligned" && (
               <span className="text-xs uppercase tracking-label text-muted-foreground">
                 Align
+              </span>
+            )}
+            {row.alignState === "pending" && (
+              <span className="text-xs uppercase tracking-label text-subtle">
+                HTF wait
+              </span>
+            )}
+            {row.alignState === "against" && (
+              <span className="text-xs uppercase tracking-label text-short">
+                vs {row.higherInterval}
               </span>
             )}
           </div>

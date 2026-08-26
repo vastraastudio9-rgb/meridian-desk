@@ -1,5 +1,5 @@
 import { evaluateSignal } from "./engine";
-import { sidesAligned } from "./align";
+import { htfAlign, sidesAligned, alignBoost } from "./align";
 import type { Candle, MarketRow, MarketSnapshot } from "./types";
 import { HIGHER_TF, type Interval } from "./universe";
 
@@ -50,6 +50,7 @@ export function applyLiveQuotes(
     const signal = evaluateSignal(candles);
     const atrPct =
       signal.atr != null && quote.price > 0 ? signal.atr / quote.price : null;
+    const alignState = htfAlign(signal.side, higher, row.higherSide);
     const aligned = sidesAligned(signal.side, higher, row.higherSide);
     return {
       ...row,
@@ -62,6 +63,7 @@ export function applyLiveQuotes(
       candles,
       signal,
       atrPct,
+      alignState,
       aligned,
       chop: atrPct != null && atrPct < chopFloor,
     };
@@ -69,7 +71,7 @@ export function applyLiveQuotes(
 
   markets.sort((a, b) => {
     const rank = (s: MarketRow) =>
-      (s.aligned ? 400 : 0) + (s.signal.side === "wait" ? 0 : 1000) + s.signal.confidence;
+      alignBoost(s.alignState) + (s.signal.side === "wait" ? 0 : 1000) + s.signal.confidence;
     return rank(b) - rank(a);
   });
 
@@ -84,7 +86,9 @@ export function applyLiveQuotes(
       longs,
       shorts,
       waits: markets.length - longs - shorts,
-      aligned: markets.filter((m) => m.aligned).length,
+      aligned: markets.filter((m) => m.alignState === "aligned").length,
+      pending: markets.filter((m) => m.alignState === "pending").length,
+      against: markets.filter((m) => m.alignState === "against").length,
     },
   };
 }

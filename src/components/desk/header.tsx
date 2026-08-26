@@ -19,6 +19,8 @@ type HeaderProps = {
   shorts: number;
   waits: number;
   aligned: number;
+  pending: number;
+  against: number;
   hitRate: number | null;
   closedTrades: number;
 };
@@ -37,6 +39,8 @@ export function DeskHeader({
   shorts,
   waits,
   aligned,
+  pending,
+  against,
   hitRate,
   closedTrades,
 }: HeaderProps) {
@@ -98,7 +102,7 @@ export function DeskHeader({
           </span>
           <span className="text-subtle">·</span>
           <span className="tabular-nums">
-            {longs} long · {shorts} short · {waits} wait · {aligned} aligned
+            {longs} long · {shorts} short · {waits} wait · {aligned} aligned · {pending} htf wait · {against} vs htf
           </span>
           {hitRate != null && (
             <>
